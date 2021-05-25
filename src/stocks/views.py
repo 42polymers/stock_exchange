@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from plotly.graph_objs import Scatter
@@ -14,15 +15,27 @@ def stocks(request):
 
 
 def stock(request, *args, **kwargs):
+    mode = 'lines'
     date_list = []
     open_list = []
     close_list = []
     low_list = []
     high_list = []
     ticker = request.GET.get('t', '')
+    year = request.GET.get('y', '')
+    month = request.GET.get('m', '')
+
     data = Stock.objects.filter(ticker__iexact=ticker)
+    if year and year.isdigit():
+        if month and month.isdigit():
+            data = data.filter(Q(date__year=year,
+                                 date__month=month))
+        else:
+            data = data.filter(Q(date__year=year))
+
     if not ticker or not data.exists():
         return HttpResponseRedirect('/stocks')
+    title = f'{ticker} ({year})' if year else f'{ticker}'
     if data.exists():
         xy_data = data.values('date', 'oopen', 'close', 'low', 'high')
         for item in xy_data:
@@ -32,14 +45,19 @@ def stock(request, *args, **kwargs):
             low_list.append(item['low'])
             high_list.append(item['high'])
 
-    plot_div = plot([Scatter(x=date_list, y=high_list,
-                             mode='lines', name='high',
-                             opacity=0.8, marker_color='green'),
-                     Scatter(x=date_list, y=low_list,
-                             mode='lines', name='low',
-                             opacity=0.8, marker_color='red'),
-                     ],
-                    output_type='div')
+    figure = {'data': [
+        Scatter(x=date_list, y=high_list, mode=mode, name='high',
+                opacity=0.8, marker_color='green', visible='legendonly'),
+        Scatter(x=date_list, y=low_list, mode=mode, name='low',
+                opacity=0.8, marker_color='red', visible='legendonly'),
+        Scatter(x=date_list, y=open_list, mode=mode, name='open',
+                opacity=0.8, marker_color='blue', visible='legendonly'),
+        Scatter(x=date_list, y=close_list, mode=mode, name='close',
+                opacity=0.8, marker_color='orange', visible='legendonly'),
+    ], 'layout': {'title': {'text': title, 'y': 0.9, 'x': 0.5,
+                            'xanchor': 'center', 'yanchor': 'top'}}}
+
+    plot_div = plot(figure, output_type='div')
     return render(request, "index.html", context={'plot_div': plot_div})
 
 
@@ -104,7 +122,7 @@ def double(request, ticker1, ticker2):
 
     plot_div = plot([Scatter(x=date_list, y=close1_list,
                              mode='lines', name=ticker1,
-                             opacity=0.8, marker_color='violet'),
+                             opacity=0.8, marker_color='violet', visible='legendonly'),
                      Scatter(x=date_list, y=close2_list,
                              mode='lines', name=ticker2,
                              opacity=0.8, marker_color='blue'),

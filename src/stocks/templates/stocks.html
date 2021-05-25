@@ -6,8 +6,12 @@
   <title>stocks</title>
 </head>
 <body>
+<table>
   {% for ticker in tickers %}
-  <a href={% url 'stock'%}?t={{ticker}}>{{ticker}}</a>
+      {% cycle '<tr>' '' '' '' '' %}
+        <td><a href={% url 'stock'%}?t={{ticker}}>{{ticker}}</a></td>
+      {% cycle '' '' '' '' '</tr>' %}
   {% endfor %}
+</table>
 </body>
 </html>

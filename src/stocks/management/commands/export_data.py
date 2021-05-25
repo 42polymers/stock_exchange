@@ -1,7 +1,6 @@
 import csv
 import datetime
 import os
-import sys
 
 from django.core.management import BaseCommand
 
@@ -9,19 +8,28 @@ from stocks.models import Stock
 
 
 class Command(BaseCommand):
-    """Парсинг данных."""
+    """Initial data parsing command."""
+
+    def add_arguments(self, parser):
+
+        parser.add_argument(
+            '--dir', type=str,
+            help='Path to directory containing files to parse', default='')
 
     def handle(self, *args, **kwargs):
-        """Выполнение."""
 
-        dir_path = '/home/anton/Documents/development/stock_exchange/files'
+        dir_path = kwargs['dir']
+        if not dir_path or not os.path.isdir(dir_path):
+            self.stdout.write(
+                'There is no such directory path')
+            return
+
         for file in os.listdir(dir_path):
             with open(os.path.join(dir_path, file), newline='\n') as f:
                 reader = csv.reader(f)
                 data = list(reader)
                 bulk_list = []
                 for item in data[1:]:
-                    sys.stdout.write(str(item))
                     bulk_list.append(Stock(
                         ticker=item[0],
                         per=item[1],
@@ -36,4 +44,3 @@ class Command(BaseCommand):
                         vol=item[8]
                     ))
                 Stock.objects.bulk_create(bulk_list)
-                sys.stdout.write(str(len(bulk_list)))
