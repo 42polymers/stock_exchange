@@ -1,4 +1,5 @@
-from django.db.models import Q
+from django.db.models import Q, Count, FloatField, F, Sum, DecimalField
+from django.db.models.functions import Round
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from plotly.graph_objs import Scatter
@@ -25,7 +26,7 @@ def stock(request, *args, **kwargs):
     year = request.GET.get('y', '')
     month = request.GET.get('m', '')
 
-    data = Stock.objects.filter(ticker__iexact=ticker)
+    data = Stock.objects.filter(ticker__iexact=ticker).order_by('date')
     if year and year.isdigit():
         if month and month.isdigit():
             data = data.filter(Q(date__year=year,
@@ -61,71 +62,34 @@ def stock(request, *args, **kwargs):
     return render(request, "index.html", context={'plot_div': plot_div})
 
 
-def diff(request, ticker1, ticker2):
+def analyze(request, *args, **kwargs):
+    mode = 'lines+markers'
 
-    close1_list = []
-    close2_list = []
+    tickers = Stock.objects.distinct(
+        'ticker').values_list('ticker', flat=True)
+    tickers_dict = {ticker: [] for ticker in tickers}
+    tickers_count = tickers.count()
 
-    data1 = Stock.objects.filter(ticker__iexact=ticker1).order_by('date')
-    data2 = Stock.objects.filter(ticker__iexact=ticker2).order_by('date')
+    actual_dates = Stock.objects.values('date').annotate(
+        dcount=Count('date')).filter(dcount=tickers_count).values_list(
+        'date', flat=True).order_by('date')
+    date_list = list(actual_dates)
 
-    if not (data1.exists() and data2.exists()):
-        return
+    data = Stock.objects.filter(date__in=actual_dates).order_by('date')
 
-    long = data1 if data1.count() > data2.count() else data2
-    short = data2 if not (long is data2) else data1
+    for item in data.values('ticker', 'close', 'oopen'):
+        tickers_dict[item['ticker']].append(
+            round((item['close']-item['oopen'])*100/item['oopen'], 2)
+        )
 
-    date_list = short.filter(date__in=long.values_list('date', flat=True)
-                             ).values_list('date', flat=True)
+    scatters = [Scatter(x=date_list, y=tickers_dict[obj], mode=mode, name=obj,
+                opacity=0.8) for obj in tickers_dict]
+    figure = {'data': scatters, 'layout': {
+        'title': {
+            'text': 'Open-Closed comparision', 'y': 0.9, 'x': 0.5,
+            'xanchor': 'center','yanchor': 'top'},
+        'yaxis_title': "Daily percent",
+    }}
 
-    for item in data1.filter(date__in=date_list).values('close'):
-        close1_list.append(item['close'])
-
-    for item in data2.filter(date__in=date_list).values('close'):
-        close2_list.append(item['close'])
-
-    date_list = list(date_list)
-    diff_list = [i1-i2 for i1, i2 in zip(close1_list, close2_list)]
-
-    plot_div = plot([Scatter(x=date_list, y=diff_list,
-                             mode='lines', name='diff',
-                             opacity=0.8, marker_color='orange'),
-                     ],
-                    output_type='div')
-    return render(request, "index.html", context={'plot_div': plot_div})
-
-
-def double(request, ticker1, ticker2):
-
-    close1_list = []
-    close2_list = []
-
-    data1 = Stock.objects.filter(ticker__iexact=ticker1).order_by('date')
-    data2 = Stock.objects.filter(ticker__iexact=ticker2).order_by('date')
-
-    if not (data1.exists() and data2.exists()):
-        return
-
-    long = data1 if data1.count() > data2.count() else data2
-    short = data2 if not (long is data2) else data1
-
-    date_list = short.filter(date__in=long.values_list('date', flat=True)
-                             ).values_list('date', flat=True)
-
-    for item in data1.filter(date__in=date_list).values('close'):
-        close1_list.append(item['close'])
-
-    for item in data2.filter(date__in=date_list).values('close'):
-        close2_list.append(item['close'])
-
-    date_list = list(date_list)
-
-    plot_div = plot([Scatter(x=date_list, y=close1_list,
-                             mode='lines', name=ticker1,
-                             opacity=0.8, marker_color='violet', visible='legendonly'),
-                     Scatter(x=date_list, y=close2_list,
-                             mode='lines', name=ticker2,
-                             opacity=0.8, marker_color='blue'),
-                     ],
-                    output_type='div')
-    return render(request, "index.html", context={'plot_div': plot_div})
+    return render(request, "analyze.html", context={
+        'plot_div': plot(figure, output_type='div')})
