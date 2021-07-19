@@ -1,14 +1,17 @@
-from django.db.models import Q, Count, FloatField, F, Sum, DecimalField
-from django.db.models.functions import Round
+from django.db.models import Count
+from django.db.models import Q
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from plotly.graph_objs import Scatter
 from plotly.offline import plot
 
+from .constants import MONTHS
 from .models import Stock
 
 
 def stocks(request):
+    """Shows available tickers"""
+
     tickers = Stock.objects.distinct(
         'ticker').values_list('ticker', flat=True)
     return render(request, "stocks.html",
@@ -16,23 +19,31 @@ def stocks(request):
 
 
 def stock(request, *args, **kwargs):
+    """Shows a single stock grid with multiple graphs"""
+
     mode = 'lines'
+    xaxis_title = 'Years'
     date_list = []
     open_list = []
     close_list = []
     low_list = []
     high_list = []
-    ticker = request.GET.get('t', '')
-    year = request.GET.get('y', '')
-    month = request.GET.get('m', '')
+    ticker = request.GET.get('ticker', '')
+    year = request.GET.get('year', '')
+    month = request.GET.get('month', '')
+
+    if month.isdigit():
+        month = int(month)
 
     data = Stock.objects.filter(ticker__iexact=ticker).order_by('date')
     if year and year.isdigit():
-        if month and month.isdigit():
+        if month and month in MONTHS:
             data = data.filter(Q(date__year=year,
                                  date__month=month))
+            xaxis_title = f'{MONTHS[month]} {year}'
         else:
             data = data.filter(Q(date__year=year))
+            xaxis_title = year
 
     if not ticker or not data.exists():
         return HttpResponseRedirect('/stocks')
@@ -48,7 +59,7 @@ def stock(request, *args, **kwargs):
 
     figure = {'data': [
         Scatter(x=date_list, y=high_list, mode=mode, name='high',
-                opacity=0.8, marker_color='green', visible='legendonly'),
+                opacity=0.8, marker_color='green'),
         Scatter(x=date_list, y=low_list, mode=mode, name='low',
                 opacity=0.8, marker_color='red', visible='legendonly'),
         Scatter(x=date_list, y=open_list, mode=mode, name='open',
@@ -56,13 +67,18 @@ def stock(request, *args, **kwargs):
         Scatter(x=date_list, y=close_list, mode=mode, name='close',
                 opacity=0.8, marker_color='orange', visible='legendonly'),
     ], 'layout': {'title': {'text': title, 'y': 0.9, 'x': 0.5,
-                            'xanchor': 'center', 'yanchor': 'top'}}}
+                            'xanchor': 'center', 'yanchor': 'top'},
+                  'yaxis_title': "Value", 'xaxis_title': xaxis_title
+                  }}
 
     plot_div = plot(figure, output_type='div')
     return render(request, "index.html", context={'plot_div': plot_div})
 
 
 def analyze(request, *args, **kwargs):
+    """Shows grid with all available tickers. Every graph reflects the percentage
+    ratio between the opening price and the closing price of stock"""
+
     mode = 'lines+markers'
 
     tickers = Stock.objects.distinct(
@@ -83,12 +99,13 @@ def analyze(request, *args, **kwargs):
         )
 
     scatters = [Scatter(x=date_list, y=tickers_dict[obj], mode=mode, name=obj,
-                opacity=0.8) for obj in tickers_dict]
+                opacity=0.8, visible='legendonly') for obj in tickers_dict]
     figure = {'data': scatters, 'layout': {
         'title': {
             'text': 'Open-Closed comparision', 'y': 0.9, 'x': 0.5,
             'xanchor': 'center','yanchor': 'top'},
         'yaxis_title': "Daily percent",
+        'xaxis_title': "Years",
     }}
 
     return render(request, "analyze.html", context={

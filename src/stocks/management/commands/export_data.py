@@ -8,7 +8,10 @@ from stocks.models import Stock
 
 
 class Command(BaseCommand):
-    """Initial data parsing command."""
+    """Initial data parsing command. Consuming datafiles
+    to fill in the DB. Every datafile contains rows
+    <TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>
+     /example directory contains an example datafile """
 
     def add_arguments(self, parser):
 
